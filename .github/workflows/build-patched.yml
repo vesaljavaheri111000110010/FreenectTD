@@ -10,24 +10,8 @@ jobs:
         with:
           lfs: true
 
-      - name: Apply stop()/join deadlock patch
-        run: |
-          python3 - <<'PY'
-          p = "FreenectV2.cpp"
-          s = open(p).read()
-          needle = "    libfreenect2::FrameMap frames;\n    if (!listener->waitForNewFrame(frames, 50)) {"
-          assert s.count(needle) == 1, "expected code not found - file differs from the one I patched"
-          new = (
-              "    // PATCH: poll instead of blocking; timed waitForNewFrame may ignore its timeout\n"
-              "    if (!listener->hasNewFrame()) {\n"
-              "        return;\n"
-              "    }\n"
-              + needle
-          )
-          open(p, "w").write(s.replace(needle, new))
-          print("patch applied")
-          PY
-          grep -n "hasNewFrame" FreenectV2.cpp
+      - name: Check source has the fix
+        run: grep -n "hasNewFrame" FreenectV2.cpp
 
       - name: Build
         run: |
