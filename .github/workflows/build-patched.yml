@@ -4,18 +4,22 @@ on: workflow_dispatch
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
         with:
           lfs: true
 
-      - name: Check source has the fix
-        run: grep -n "hasNewFrame" FreenectV2.cpp
+      - name: Select newest stable Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          XC=$(ls -d /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1)
+          echo "Using $XC"
+          sudo xcode-select -s "$XC/Contents/Developer"
+          xcodebuild -version
 
       - name: Build
         run: |
-          xcodebuild -version
           SCHEME=$(xcodebuild -list -project FreenectTD.xcodeproj | awk '/Schemes:/{f=1;next} f&&NF{sub(/^[ \t]+/,"");print;exit}')
           echo "Scheme: $SCHEME"
           xcodebuild -project FreenectTD.xcodeproj -scheme "$SCHEME" -configuration Release \
