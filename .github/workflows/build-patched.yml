@@ -1,0 +1,51 @@
+name: Build patched FreenectTOP
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Apply stop()/join deadlock patch
+        run: |
+          python3 - <<'PY'
+          p = "FreenectV2.cpp"
+          s = open(p).read()
+          needle = "    libfreenect2::FrameMap frames;\n    if (!listener->waitForNewFrame(frames, 50)) {"
+          assert s.count(needle) == 1, "expected code not found - file differs from the one I patched"
+          new = (
+              "    // PATCH: poll instead of blocking; timed waitForNewFrame may ignore its timeout\n"
+              "    if (!listener->hasNewFrame()) {\n"
+              "        return;\n"
+              "    }\n"
+              + needle
+          )
+          open(p, "w").write(s.replace(needle, new))
+          print("patch applied")
+          PY
+          grep -n "hasNewFrame" FreenectV2.cpp
+
+      - name: Build
+        run: |
+          xcodebuild -version
+          SCHEME=$(xcodebuild -list -project FreenectTD.xcodeproj | awk '/Schemes:/{f=1;next} f&&NF{sub(/^[ \t]+/,"");print;exit}')
+          echo "Scheme: $SCHEME"
+          xcodebuild -project FreenectTD.xcodeproj -scheme "$SCHEME" -configuration Release \
+            -derivedDataPath ./build_out ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+            CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO build
+
+      - name: Package
+        run: |
+          PLUGIN=$(find ./build_out -name "FreenectTOP.plugin" -type d | head -1)
+          test -n "$PLUGIN"
+          codesign --force --deep --sign - "$PLUGIN"
+          ditto -c -k --keepParent "$PLUGIN" FreenectTOP_patched.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FreenectTOP-patched
+          path: FreenectTOP_patched.zip
